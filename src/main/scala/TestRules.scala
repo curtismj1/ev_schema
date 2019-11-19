@@ -1,8 +1,8 @@
-import java.util.function.Predicate
+import java.util
 import java.util.stream.Collectors
 import java.util.{List => JList}
 
-import scala.jdk.CollectionConverters._
+import play.api.libs.json.{JsObject, JsPath, JsValue}
 
 trait Describable {
   def description: String
@@ -12,6 +12,48 @@ trait TestRule extends Describable {
   def passed(): Boolean
   def failed(): Boolean = !passed()
   override def description: String = ""
+  def and(otherRule: TestRule): AndTestRule = this match {
+    case  a: AndTestRule => a.rules.add(otherRule); a
+    case _ => AndTestRule(util.Arrays.asList(this, otherRule))
+  }
+  def or(otherRule: TestRule): OrTestRule = this match {
+    case a: OrTestRule => a.rules.add(otherRule); a
+    case _ => OrTestRule(util.Arrays.asList(this, otherRule))
+  }
+}
+
+object TestRule {
+  def failed(desc: String): TestRule = new TestRule {
+    override def passed(): Boolean = false
+    override def description: String = desc
+  }
+  def passed(desc: String): TestRule = new TestRule {
+    override def passed(): Boolean = true
+    override def description: String = desc
+  }
+
+  def and(rule1: TestRule, rule2: TestRule): AndTestRule = rule1.and(rule2)
+  def or(rule1: TestRule, rule2: TestRule): OrTestRule = rule1.or(rule2)
+
+  def and[A](f1: Function[A, TestRule], f2: Function[A, TestRule]): Function[A, AndTestRule] =
+    a => f1(a) and f2(a)
+
+  def or[A](f1: Function[A, TestRule], f2: Function[A, TestRule]): Function[A, OrTestRule] =
+    a => f1(a) or f2(a)
+
+  type TestRuleFunctionCombinator[A] = (Function[A, TestRule], Function[A, TestRule]) => Function[A, TestRule]
+}
+
+
+case class JsonObjTestRuleSupplier(extractionPath: JsPath,
+                                   jsValueFunc: JsValue => TestRule)
+    extends Function[JsObject, TestRule] {
+  override def apply(obj: JsObject): TestRule = {
+    val test = extractionPath(obj)
+    test.headOption.fold(
+      TestRule.failed(s"Value at path $extractionPath is undefined"))(
+      jsValueFunc)
+  }
 }
 
 case class ContextTestRule[T <: TestRule](
@@ -68,8 +110,8 @@ case class StringEqualsTestRule(expected: String, actual: String)
 
 case class StringContainsTestRuleSupplier(expected: JList[String])
     extends Function[String, StringContainsTestRule] {
-  override def apply(actual: String): StringContainsTestRule
-  = StringContainsTestRule(expected, actual)
+  override def apply(actual: String): StringContainsTestRule =
+    StringContainsTestRule(expected, actual)
 }
 
 case class StringContainsTestRule(expected: JList[String], actual: String)
@@ -87,6 +129,8 @@ case class StringContainsTestRule(expected: JList[String], actual: String)
 
 case class StringOrContainsTestRuleSupplier(expected: JList[String])
     extends Function[String, StringOrContainsTestRule] {
+  override def apply(actual: String): StringOrContainsTestRule =
+    StringOrContainsTestRule(expected, actual)
 }
 
 case class StringOrContainsTestRule(expected: JList[String], actual: String)
