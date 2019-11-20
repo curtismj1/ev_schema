@@ -1,8 +1,9 @@
 import scala.jdk.CollectionConverters._
 import java.util.{List => JList}
 import java.util.stream.{Collectors, Stream => JStream}
-import play.api.libs.json.{JsObject, JsPath, JsValue}
 
+import TestRule.TestRuleFunctionCombinator
+import play.api.libs.json.{JsObject, JsPath, JsValue}
 
 case class ValidationEngine(activeContext: Set[String] = Set.empty,
                             ruleForPath: Map[JsPath, JsValue => TestRule] =

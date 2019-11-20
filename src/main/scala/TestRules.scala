@@ -65,7 +65,7 @@ trait ActivatesContext[+T] {
   def activatesContext: Set[String]
 }
 
-type RequiresActivatesContext[+T] = RequiresContext[T] with ActivatesContext[T]
+trait RequiresActivatesContext[+T] extends RequiresContext[T] with ActivatesContext[T]
 
 case class ContextWrapper[+T](private val item: T, requiresContext: Set[String] = Set.empty,
                              activatesContext: Set[String] = Set.empty) extends RequiresActivatesContext[T]{
