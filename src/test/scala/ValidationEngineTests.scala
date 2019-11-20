@@ -28,12 +28,34 @@ class ValidationEngineTests extends FlatSpec with Matchers {
            "an object without a valid path should be false")
   }
 
-  "Test" should "" in {
+  "Valid json" should "Return valid test rule" in {
     val test: Map[String, Vector[String]] =
       Map.empty.withDefaultValue(Vector.empty)
     test("test")
     val engine = ValidationEngine(ruleForPath = Map(JsPath \ "v1" -> (value =>
       StringEqualsTestRule("test", value.asInstanceOf[JsString].value))))
+    val validJson =
+      """
+        |{
+        |   "v1": "test"
+        |}
+      """.stripMargin
+    val results = engine.validate(Json.parse(validJson))
+    print(results.description)
+    assert(results.passed())
+  }
+
+  "Test" should "" in {
+    val test: Map[String, Vector[String]] =
+      Map.empty.withDefaultValue(Vector.empty)
+    test("test")
+
+    val engine = ValidationEngine(ruleForPath = Map(JsPath \ "v1" ->
+      TestRule.and(
+        value => StringEqualsTestRule("test", value.asInstanceOf[JsString].value),
+        value => RegexTestRule("es", value.asInstanceOf[JsString].value)
+      )
+    ))
     val validJson =
       """
         |{

@@ -1,22 +1,27 @@
 import scala.jdk.CollectionConverters._
 import java.util.{List => JList}
 import java.util.stream.{Collectors, Stream => JStream}
-
-import TestRule.TestRuleFunctionCombinator
 import play.api.libs.json.{JsObject, JsPath, JsValue}
 
+
 case class ValidationEngine(activeContext: Set[String] = Set.empty,
-                            ruleForPath: Map[JsPath, JsValue => TestRule] = Map.empty) {
-  def withContext(context: Set[String]): ValidationEngine = copy(activeContext = context)
-  def withAdditionalContext(context: Set[String]): ValidationEngine = copy(activeContext = activeContext union context)
-  def withRuleForPath(path: JsPath, ruleFunc: JsValue => TestRule,
-                      combinator: TestRuleFunctionCombinator[JsValue] = TestRule.and[JsValue]): ValidationEngine = {
+                            ruleForPath: Map[JsPath, JsValue => TestRule] =
+                              Map.empty) {
+  def withContext(context: Set[String]): ValidationEngine =
+    copy(activeContext = context)
+  def withAdditionalContext(context: Set[String]): ValidationEngine =
+    copy(activeContext = activeContext union context)
+  def withRuleForPath(path: JsPath,
+                      ruleFunc: JsValue => TestRule,
+                      combinator: TestRuleFunctionCombinator[JsValue] =
+                        TestRule.and[JsValue]): ValidationEngine = {
     val updatedFunc = ruleForPath.get(path) match {
       case Some(existingFunction) => combinator(existingFunction, ruleFunc)
-      case None => ruleFunc
+      case None                   => ruleFunc
     }
     copy(ruleForPath = ruleForPath.updated(path, updatedFunc))
   }
+
   def validate(input: JsValue): TestRule = {
     ruleForPath.keys.foldLeft(TestRule.passed(""))((partialRule, jsPath) => {
       partialRule.and(ruleForPath(jsPath)(jsPath(input).head))
@@ -24,13 +29,19 @@ case class ValidationEngine(activeContext: Set[String] = Set.empty,
   }
 }
 
+/*
+engine.withNewRule(RuleBuilder.forPath(jsPath).activatesContext(context)
+      .requiresContext(somContext)
+ */
+
 object ValidationEngine {
 
   def validate(rules: Iterable[ContextTestRule[TestRule]]): AndTestRule = {
     validateForActiveContext(rules.toVector, Set.empty)
   }
 
-  def validate(rules: java.util.List[ContextTestRule[TestRule]]): AndTestRule = {
+  def validate(
+      rules: java.util.List[ContextTestRule[TestRule]]): AndTestRule = {
     validateForActiveContext(rules.asScala.toVector, Set.empty)
   }
 

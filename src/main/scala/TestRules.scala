@@ -44,7 +44,6 @@ object TestRule {
   type TestRuleFunctionCombinator[A] = (Function[A, TestRule], Function[A, TestRule]) => Function[A, TestRule]
 }
 
-
 case class JsonObjTestRuleSupplier(extractionPath: JsPath,
                                    jsValueFunc: JsValue => TestRule)
     extends Function[JsObject, TestRule] {
@@ -56,11 +55,30 @@ case class JsonObjTestRuleSupplier(extractionPath: JsPath,
   }
 }
 
+trait RequiresContext[+T] {
+  def get: T
+  def requiresContext: Set[String]
+}
+
+trait ActivatesContext[+T] {
+  def get: T
+  def activatesContext: Set[String]
+}
+
+type RequiresActivatesContext[+T] = RequiresContext[T] with ActivatesContext[T]
+
+case class ContextWrapper[+T](private val item: T, requiresContext: Set[String] = Set.empty,
+                             activatesContext: Set[String] = Set.empty) extends RequiresActivatesContext[T]{
+  def get: T = item
+}
+
 case class ContextTestRule[T <: TestRule](
     rule: T,
     requiresContext: Set[String] = Set.empty,
     activatesContext: Set[String] = Set.empty,
-    isFailingRule: Option[Boolean] = None)
+    isFailingRule: Option[Boolean] = None) extends RequiresActivatesContext[T] {
+  def get: T = rule
+}
 
 object ContextTestRule {
   def shouldFail[T <: TestRule](implicit rule: ContextTestRule[T]): Boolean = {
@@ -92,7 +110,7 @@ case class RegexTestRuleSupplier(regex: String)
 case class RegexTestRule(regex: String, str: String) extends TestRule {
   override def description: String =
     s"Regex pattern ${regex} expected to match $str"
-  override def passed(): Boolean = str.matches(regex)
+  override def passed(): Boolean = regex.r.findFirstIn(str).isDefined
 }
 
 case class StringEqualsTestRuleSupplier(expected: String)
@@ -137,7 +155,7 @@ case class StringOrContainsTestRule(expected: JList[String], actual: String)
     extends TestRule {
   override def description: String =
     s"$actual expected to contain all substrings"
-  override def passed = foundSubstrings.isEmpty == false
+  override def passed = !foundSubstrings.isEmpty
   lazy val foundSubstrings = expected
     .stream()
     .filter(substr => actual.contains(substr))
