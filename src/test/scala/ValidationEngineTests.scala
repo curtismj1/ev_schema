@@ -1,7 +1,10 @@
 import java.util.Arrays
 
 import org.scalatest._
-import play.api.libs.json.{JsObject, JsPath, JsString, Json}
+import java.util.{List => JList}
+
+import play.api.libs.json.jackson.PlayJsonModule
+import play.api.libs.json.{JsObject, JsPath, JsString, JsValue, Json, OFormat}
 
 class ValidationEngineTests extends FlatSpec with Matchers {
 
@@ -32,8 +35,10 @@ class ValidationEngineTests extends FlatSpec with Matchers {
     val test: Map[String, Vector[String]] =
       Map.empty.withDefaultValue(Vector.empty)
     test("test")
-    val engine = ValidationEngine(ruleForPath = Map(JsPath \ "v1" -> (value =>
-      StringEqualsTestRule("test", value.asInstanceOf[JsString].value))))
+    val engine = ValidationEngine().withRuleFunc(TestRule.and(
+      value => StringEqualsTestRule("test", value.asInstanceOf[JsString].value),
+      value => RegexTestRule("es", value.asInstanceOf[JsString].value)
+    )).forPath(JsPath \ "v1").add
     val validJson =
       """
         |{
@@ -41,30 +46,29 @@ class ValidationEngineTests extends FlatSpec with Matchers {
         |}
       """.stripMargin
     val results = engine.validate(Json.parse(validJson))
-    print(results.description)
     assert(results.passed())
   }
 
-  "Test" should "" in {
-    val test: Map[String, Vector[String]] =
-      Map.empty.withDefaultValue(Vector.empty)
-    test("test")
+  "Failing rule whose required context is not activated by any rules" should "Pass" in {
+    val inputVal = JsString("test")
+    val testResults = ValidationEngine()
+      .withRuleFunc(_ => TestRule.passed("root passed"))
+      .forRootPath().add
+      .withRuleFunc(_ => TestRule.failed("nonactive_context rule failed"))
+      .forRootPath().withRequiresContext("nonactive_context").add
+      .validate(inputVal)
+    assert(testResults.passed())
+  }
 
-    val engine = ValidationEngine(ruleForPath = Map(JsPath \ "v1" ->
-      TestRule.and(
-        value => StringEqualsTestRule("test", value.asInstanceOf[JsString].value),
-        value => RegexTestRule("es", value.asInstanceOf[JsString].value)
-      )
-    ))
-    val validJson =
-      """
-        |{
-        |   "v1": "test"
-        |}
-      """.stripMargin
-    val results = engine.validate(Json.parse(validJson))
-    print(results.description)
-    assert(results.passed())
+  "Failing rule whose required context is activated by any rules" should "Pass" in {
+    val inputVal = JsString("test")
+    val testResults = ValidationEngine()
+      .withRuleFunc(_ => TestRule.passed("root passed"))
+      .forRootPath().withActivatesContext("active_context").add
+      .withRuleFunc(_ => TestRule.failed("nonactive_context rule failed"))
+      .forRootPath().withRequiresContext("active_context").add
+      .validate(inputVal)
+    assert(testResults.failed())
   }
 
 }

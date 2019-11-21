@@ -4,54 +4,61 @@ import java.util.{List => JList}
 
 import play.api.libs.json.{JsObject, JsPath, JsValue}
 
+import scala.jdk.CollectionConverters._
+import scala.annotation.varargs
+
 trait Describable {
   def description: String
 }
 
 trait TestRule extends Describable {
   def passed(): Boolean
-  def failed(): Boolean = !passed()
+  def failed(): Boolean            = !passed()
   override def description: String = ""
   def and(otherRule: TestRule): AndTestRule = this match {
-    case  a: AndTestRule => a.rules.add(otherRule); a
-    case _ => AndTestRule(util.Arrays.asList(this, otherRule))
+    case a: AndTestRule => a.rules.add(otherRule); a
+    case _              => AndTestRule(util.Arrays.asList(this, otherRule))
   }
   def or(otherRule: TestRule): OrTestRule = this match {
     case a: OrTestRule => a.rules.add(otherRule); a
-    case _ => OrTestRule(util.Arrays.asList(this, otherRule))
+    case _             => OrTestRule(util.Arrays.asList(this, otherRule))
   }
 }
 
 object TestRule {
   def failed(desc: String): TestRule = new TestRule {
-    override def passed(): Boolean = false
+    override def passed(): Boolean   = false
     override def description: String = desc
   }
   def passed(desc: String): TestRule = new TestRule {
-    override def passed(): Boolean = true
+    override def passed(): Boolean   = true
     override def description: String = desc
   }
 
   def and(rule1: TestRule, rule2: TestRule): AndTestRule = rule1.and(rule2)
-  def or(rule1: TestRule, rule2: TestRule): OrTestRule = rule1.or(rule2)
+  def or(rule1: TestRule, rule2: TestRule): OrTestRule   = rule1.or(rule2)
 
-  def and[A](f1: Function[A, TestRule], f2: Function[A, TestRule]): Function[A, AndTestRule] =
-    a => f1(a) and f2(a)
+  @varargs
+  def and[A](funcs: Function[A, TestRule]*): Function[A, AndTestRule] =
+    a => AndTestRule(funcs.map(func => func(a)).toBuffer.asJava)
 
-  def or[A](f1: Function[A, TestRule], f2: Function[A, TestRule]): Function[A, OrTestRule] =
-    a => f1(a) or f2(a)
+  @varargs
+  def or[A](funcs: Function[A, TestRule]*): Function[A, OrTestRule] =
+    a => OrTestRule(funcs.map(func => func(a)).toBuffer.asJava)
 
-  type TestRuleFunctionCombinator[A] = (Function[A, TestRule], Function[A, TestRule]) => Function[A, TestRule]
+  type TestRuleFunctionCombinator[A] =
+    (Function[A, TestRule], Function[A, TestRule]) => Function[A, TestRule]
 }
 
-case class JsonObjTestRuleSupplier(extractionPath: JsPath,
-                                   jsValueFunc: JsValue => TestRule)
-    extends Function[JsObject, TestRule] {
-  override def apply(obj: JsObject): TestRule = {
+case class JsonObjTestRuleSupplier(
+    extractionPath: JsPath,
+    jsValueFunc: JsValue => TestRule
+) extends Function[JsValue, TestRule] {
+  override def apply(obj: JsValue): TestRule = {
     val test = extractionPath(obj)
     test.headOption.fold(
-      TestRule.failed(s"Value at path $extractionPath is undefined"))(
-      jsValueFunc)
+      TestRule.failed(s"Value at path $extractionPath is undefined")
+    )(jsValueFunc)
   }
 }
 
@@ -65,10 +72,15 @@ trait ActivatesContext[+T] {
   def activatesContext: Set[String]
 }
 
-trait RequiresActivatesContext[+T] extends RequiresContext[T] with ActivatesContext[T]
+trait RequiresActivatesContext[+T]
+    extends RequiresContext[T]
+    with ActivatesContext[T]
 
-case class ContextWrapper[+T](private val item: T, requiresContext: Set[String] = Set.empty,
-                             activatesContext: Set[String] = Set.empty) extends RequiresActivatesContext[T]{
+case class ContextWrapper[+T](
+    private val item: T,
+    requiresContext: Set[String] = Set.empty,
+    activatesContext: Set[String] = Set.empty
+) extends RequiresActivatesContext[T] {
   def get: T = item
 }
 
@@ -76,7 +88,8 @@ case class ContextTestRule[T <: TestRule](
     rule: T,
     requiresContext: Set[String] = Set.empty,
     activatesContext: Set[String] = Set.empty,
-    isFailingRule: Option[Boolean] = None) extends RequiresActivatesContext[T] {
+    isFailingRule: Option[Boolean] = None
+) extends RequiresActivatesContext[T] {
   def get: T = rule
 }
 
@@ -93,13 +106,15 @@ abstract class ReduceTestRule(val rules: JList[TestRule]) extends TestRule
 case class AndTestRule(override val rules: JList[TestRule])
     extends ReduceTestRule(rules = rules) {
   override def passed(): Boolean = rules.stream().allMatch(_.passed())
-  override def description: String = "AND"
+  override def description: String =
+    s"AND (\n\t${rules.stream().map(_.description).collect(Collectors.joining("\n\t"))}\n)"
 }
 
 case class OrTestRule(override val rules: JList[TestRule])
     extends ReduceTestRule(rules = rules) {
   override def passed(): Boolean = rules.stream().anyMatch(_.passed())
-  override def description: String = "OR"
+  override def description: String =
+    s"OR (\n\t${rules.stream().map(_.description).collect(Collectors.joining("\n\t"))}\n)"
 }
 
 case class RegexTestRuleSupplier(regex: String)
