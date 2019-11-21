@@ -1,33 +1,28 @@
-import java.util.Arrays
-
 import org.scalatest._
-import java.util.{List => JList}
-
-import play.api.libs.json.jackson.PlayJsonModule
-import play.api.libs.json.{JsObject, JsPath, JsString, JsValue, Json, OFormat}
+import play.api.libs.json.{JsObject, JsPath, JsString, JsValue, Json}
 
 class ValidationEngineTests extends FlatSpec with Matchers {
 
-  "root context test rule" should "be true" in {
-    val testRule = ContextTestRule[TestRule](() => true)
-    //ValidationEngine.validate(Arrays.asList(testRule))
-  }
-
-  "root context" should "be true" in {
-    val testRule =
-      ValidationEngine.validate(
-        Arrays.asList(ContextTestRule[TestRule](() => true)))
-  }
-
   "Json path test rule extractor" should "be true when path is valid, false if not" in {
-    val jsonObjTestRuleSupplier =
-      JsonObjTestRuleSupplier(JsPath \ "test",
-                              _ => TestRule.passed("key test exists"))
-    val validObj = JsObject(Seq("test" -> JsString("exists")))
-    val invalidObj = JsObject(Seq("no_test" -> JsString("doesn't exist")))
-    assert(jsonObjTestRuleSupplier(validObj).passed(),
+    def ruleFunc(rule: JsValue): TestRule = StringEqualsTestRule("test", rule.asInstanceOf[JsString].value)
+    val engine = ValidationEngine().withRuleFunc(ruleFunc)
+      .forPath(JsPath \ "v1")
+      .add
+    val validJson =
+      """
+        | {
+        |   "v1": "test"
+        | }
+      """.stripMargin
+    val invalidJson =
+      """
+        | {
+        |   "non_existent_path": "test"
+        | }
+      """.stripMargin
+    assert(engine.validate(Json.parse(validJson)).passed(),
            "an object with a valid path should be true")
-    assert(jsonObjTestRuleSupplier(invalidObj).failed(),
+    assert(engine.validate(Json.parse(invalidJson)).failed(),
            "an object without a valid path should be false")
   }
 
