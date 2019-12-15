@@ -2,6 +2,9 @@ import org.scalatest.{FlatSpec, Matchers}
 
 class DocumentParserTests extends FlatSpec with Matchers {
 
+  val docParser = new DocumentParser()
+
+
   "AND keyword" should "return an AndTestRule" in {
     val andDoc =
       """
@@ -13,14 +16,8 @@ class DocumentParserTests extends FlatSpec with Matchers {
         |   }
         |}
       """.stripMargin
-
-    val validPayload =
-      """
-        |{
-        |   "v1": "test"
-        |}
-      """.stripMargin
-
   }
+
+
 
 }

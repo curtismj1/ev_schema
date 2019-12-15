@@ -1,5 +1,5 @@
 import org.scalatest._
-import play.api.libs.json.{JsObject, JsPath, JsString, JsValue, Json}
+import play.api.libs.json.{JsPath, JsString, JsValue, Json}
 
 class ValidationEngineTests extends FlatSpec with Matchers {
 
