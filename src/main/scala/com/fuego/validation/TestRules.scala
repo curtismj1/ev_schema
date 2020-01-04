@@ -1,11 +1,13 @@
+package com.fuego.validation
+
 import java.util
 import java.util.stream.Collectors
 import java.util.{List => JList}
 
-import play.api.libs.json.{JsObject, JsPath, JsValue}
+import play.api.libs.json.{JsPath, JsValue}
 
-import scala.jdk.CollectionConverters._
 import scala.annotation.varargs
+import scala.jdk.CollectionConverters._
 
 trait Describable {
   def description: String
@@ -46,8 +48,6 @@ object TestRule {
   def or[A](funcs: Function[A, TestRule]*): Function[A, OrTestRule] =
     a => OrTestRule(funcs.map(func => func(a)).toBuffer.asJava)
 
-  type TestRuleFunctionCombinator[A] =
-    (Function[A, TestRule], Function[A, TestRule]) => Function[A, TestRule]
 }
 
 case class JsonObjTestRuleSupplier(
@@ -155,7 +155,7 @@ case class StringContainsTestRule(expected: JList[String], actual: String)
   override def passed = missingSubstrings.isEmpty
   lazy val missingSubstrings = expected
     .stream()
-    .filter(substr => actual.contains(substr))
+    .filter(substr => !actual.contains(substr))
     .collect(Collectors.toList())
 
 }
@@ -175,4 +175,20 @@ case class StringOrContainsTestRule(expected: JList[String], actual: String)
     .stream()
     .filter(substr => actual.contains(substr))
     .collect(Collectors.toList())
+}
+
+object TestRuleCombinators {
+  @varargs
+  def and[T](functions: (T => TestRule)*): T => AndTestRule =
+      t => AndTestRule(functions.map(_(t)).asJava)
+
+  @varargs
+  def or[T](functions: (T => TestRule)*): T => OrTestRule =
+    t => OrTestRule(functions.map(_(t)).asJava)
+
+  def and[T]: TestRuleFunctionCombinator[T, AndTestRule] = functions => and(functions = functions.toArray:_*)
+
+  def or[T]: TestRuleFunctionCombinator[T, OrTestRule] = functions => or(functions.toArray:_*)
+
+
 }

@@ -1,8 +1,12 @@
-import scala.jdk.CollectionConverters._
+package com.fuego.validation
+
+import java.util.stream.Collectors
 import java.util.{List => JList}
-import java.util.stream.{Collectors, Stream => JStream}
+
 import play.api.Logger
-import play.api.libs.json.{JsObject, JsPath, JsValue}
+import play.api.libs.json.{JsPath, JsValue}
+
+import scala.jdk.CollectionConverters._
 
 case class ValidationEngineTestRuleBuilder(ruleFunc: JsValue => TestRule)(
     implicit validationEngine: ValidationEngine

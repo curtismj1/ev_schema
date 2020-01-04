@@ -1,3 +1,4 @@
+import com.fuego.validation.{RegexTestRule, StringEqualsTestRule, TestRule, ValidationEngine}
 import org.scalatest._
 import play.api.libs.json.{JsPath, JsString, JsValue, Json}
 

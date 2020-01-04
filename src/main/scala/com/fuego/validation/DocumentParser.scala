@@ -1,9 +1,8 @@
-import java.util
+package com.fuego.validation
 
-import play.api.libs.json.{JsArray, JsObject, JsPath, JsString, JsValue, Json}
-import java.util.{List => JList}
-
+import com.fuego.validation.TestRuleCombinators.and
 import play.api.libs.json
+import play.api.libs.json._
 
 import scala.jdk.CollectionConverters._
 
@@ -19,44 +18,66 @@ trait Parser[T] {
   *   3. What happens if we iterate to the full depth of a document without finding any keywords?
   */
 case class RuleDocumentParser(
-    keywordMap: Map[String, JsValue => String => TestRule] =
-      RuleDocumentParser.defaultKeywordMap
+    baseKeywordMap: Map[String, JsValue => String => TestRule] =
+      RuleDocumentParser.defaultKeywordMap,
+    ruleCombinator: TestRuleFunctionCombinator[String, TestRule] = TestRuleCombinators.and,
+    currentPathExtractor: JsPath = JsPath
 ) extends Parser[String => TestRule] {
+
   def parse(rulesDoc: String): String => TestRule = {
     val jsVal = Json.parse(rulesDoc)
-    parse(jsVal)
+    parseVal(jsVal)
   }
 
-  def parse(jsVal: JsValue): String => TestRule =
+  def keywordMap: Map[String, JsValue => String => TestRule] =
+    baseKeywordMap.withDefault(str => copy(currentPathExtractor = currentPathExtractor \ str).parseVal _) ++
+      Map(
+        "AND" -> copy(ruleCombinator = TestRuleCombinators.and).parseVal,
+        "OR" ->  copy(ruleCombinator = TestRuleCombinators.or).parseVal
+      )
+
+  def parseVal(jsVal: JsValue): String => TestRule =
     jsVal match {
-      case jsObj: JsObject => parse(jsObj)
-      case jsArr: JsArray  => parse(jsArr)
+      case jsObj: JsObject => parseObj(jsObj)
+      case jsArr: JsArray  => parseArr(jsArr)
       case _ =>
-        _ => TestRule.failed("Could not find test rule")
+        _ =>
+          TestRule.failed("Could not find test rule")
     }
 
-  def parse(jsObj: JsObject): String => TestRule = {
-    jsObj
-    // TODO: Implement this
-    _ => TestRule.failed("")
-  }
-  def parse(jsArr: JsArray): String => TestRule = { _ =>
-    TestRule.failed("")
+  //Should this iterate through all the key values to extract what is in the map and then recurse down?
+  //How should it handle all the paths?
+  def parseObj(jsObj: JsObject): String => TestRule = {
+    val rules  =
+      for {
+        (key, value) <- jsObj.fields
+        keywordFunc  <- keywordMap.get(key)
+      } yield keywordFunc(value)
+    ruleCombinator(rules)
   }
 
+  def parseArr(jsArr: JsArray): String => TestRule =
+    ruleCombinator(jsArr.value.map(jsVal => parseVal(jsVal)))
+}
+
+case class RuleDocumentParserBuilder(keywordMap: Map[String, JsValue => String => TestRule]) {
+  def withBaseKeywordMap(keywordMap: Map[String, JsValue => String => TestRule]): RuleDocumentParserBuilder = {
+    this.copy(keywordMap)
+  }
 }
 
 object RuleDocumentParser {
+
   // TODO: Come back to this and think about how to avoid the casting issues
-  val defaultKeywordMap: Map[String, JsValue => (String => TestRule)] = Map(
+  val defaultKeywordMap: Map[String, JsValue => String => TestRule] = Map(
     "equals" -> (
         (jsVal: JsValue) =>
           StringEqualsTestRuleSupplier(jsVal.asInstanceOf[JsString].value)
-      ),
+    ),
     "regex" -> (
         (jsVal: JsValue) =>
           RegexTestRuleSupplier(jsVal.asInstanceOf[JsString].value)
-      ),
+    ),
     "contains" -> (
         (jsVal: JsValue) =>
           StringContainsTestRuleSupplier(
@@ -68,7 +89,7 @@ object RuleDocumentParser {
               .toBuffer
               .asJava
           )
-      ),
+    ),
     "orContains" -> (
         (jsVal: JsValue) =>
           StringContainsTestRuleSupplier(
@@ -80,7 +101,7 @@ object RuleDocumentParser {
               .toBuffer
               .asJava
           )
-      )
+    )
   )
 }
 class DocumentParser {
