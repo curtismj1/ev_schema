@@ -6,9 +6,23 @@ import play.api.libs.json
 import play.api.libs.json.{JsArray, JsObject, JsPath, JsString, JsValue, Json}
 
 import scala.jdk.CollectionConverters._
+import scala.util.Try
 
 trait Parser[T] {
   def parse(str: String): T
+}
+
+object JsonHelpers {
+  implicit class toJson(str: String) {
+    def toVal: Either[ValidationReport, JsValue] =
+      Try(Json.parse(str)).toEither.left.map(
+        exception =>
+          ValidationReport.failed(
+            s"Exception occurred when trying to parse $str to json ${exception.getMessage}"
+          )
+      )
+  }
+
 }
 
 /**
@@ -19,34 +33,33 @@ trait Parser[T] {
   *   3. What happens if we iterate to the full depth of a document without finding any keywords?
   */
 case class RuleDocumentParser(
-                               keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
+    _keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
       RuleDocumentParser.defaultKeywordMap,
-                               ruleReducer: TestRuleReducer[String, ValidationReport] = RuleReducers.and[String],
-                               currentPathExtractor: JsPath = JsPath
+    ruleReducer: TestRuleReducer[String, ValidationReport] =
+      RuleReducers.and[String],
+    currentPathExtractor: JsPath = JsPath
 ) extends Parser[TestRule[String, ValidationReport]] {
 
-
-
-  def parse(str: String):  TestRule[String, ValidationReport] = {
+  def parse(str: String): TestRule[String, ValidationReport] = {
     val jsVal = Json.parse(str)
     parseVal(jsVal)
   }
 
-  /*def keywordMap: Map[String, JsValue => String => ValidationReport] =
-    keywordMap.withDefault(str => copy(currentPathExtractor = currentPathExtractor \ str).parseVal _) ++
+  def keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
+    _keywordMap.withDefault(
+      str => copy(currentPathExtractor = currentPathExtractor \ str).parseVal _
+    ) ++
       Map(
-        "AND" -> copy(ruleReducer = ValidationReportCombinators.and).parseVal,
-        "OR" ->  copy(ruleReducer = ValidationReportCombinators.or).parseVal
+        "AND" -> copy(ruleReducer = RuleReducers.and).parseVal,
+        "OR"  -> copy(ruleReducer = RuleReducers.or).parseVal
       )
-   */
 
   def parseVal(jsVal: JsValue): TestRule[String, ValidationReport] =
     jsVal match {
       case jsObj: JsObject => parseObj(jsObj)
       case jsArr: JsArray  => parseArr(jsArr)
       case _ =>
-        _ =>
-          ValidationReport.failed("Could not find test rule")
+        _ => ValidationReport.failed("Could not find test rule")
     }
 
   //Should this iterate through all the key values to extract what is in the map and then recurse down?
@@ -55,7 +68,7 @@ case class RuleDocumentParser(
     val rules: collection.Set[TestRule[String, ValidationReport]] =
       for {
         (key, value) <- jsObj.fieldSet
-        keywordFunc  <- keywordMap.get(key)
+        keywordFunc = keywordMap(key)
       } yield keywordFunc(value)
     ruleReducer(rules.toList)
   }
@@ -64,8 +77,12 @@ case class RuleDocumentParser(
     ruleReducer(jsArr.value.map(parseVal).toList)
 }
 
-case class RuleDocumentParserBuilder(keywordMap: Map[String, JsValue => String => ValidationReport]) {
-  def withBaseKeywordMap(keywordMap: Map[String, JsValue => String => ValidationReport]): RuleDocumentParserBuilder = {
+case class RuleDocumentParserBuilder(
+    keywordMap: Map[String, JsValue => String => ValidationReport]
+) {
+  def withBaseKeywordMap(
+      keywordMap: Map[String, JsValue => String => ValidationReport]
+  ): RuleDocumentParserBuilder = {
     this.copy(keywordMap)
   }
 }
@@ -73,15 +90,16 @@ case class RuleDocumentParserBuilder(keywordMap: Map[String, JsValue => String =
 object RuleDocumentParser {
 
   // TODO: Come back to this and think about how to avoid thej casting issues
-  val defaultKeywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] = Map(
+  val defaultKeywordMap
+      : Map[String, JsValue => TestRule[String, ValidationReport]] = Map(
     "equals" -> (
         (jsVal: JsValue) =>
           StringEqualsTestRule(jsVal.asInstanceOf[JsString].value)
-    ),
+      ),
     "regex" -> (
         (jsVal: JsValue) =>
           RegexValidationReportSupplier(jsVal.asInstanceOf[JsString].value)
-    ),
+      ),
     "contains" -> (
         (jsVal: JsValue) =>
           StringContainsTestRule(
@@ -93,7 +111,7 @@ object RuleDocumentParser {
               .toBuffer
               .asJava
           )
-    ),
+      ),
     "orContains" -> (
         (jsVal: JsValue) =>
           StringContainsTestRule(
@@ -105,7 +123,7 @@ object RuleDocumentParser {
               .toBuffer
               .asJava
           )
-    )
+      )
   )
 }
 

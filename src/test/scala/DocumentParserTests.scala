@@ -1,4 +1,4 @@
-import com.fuego.validation.{RuleDocumentParser}
+import com.fuego.validation.{RuleDocumentParser, TestRule, ValidationReport}
 import org.scalatest.{FlatSpec, Matchers}
 import play.api.libs.json.Json
 
@@ -21,10 +21,15 @@ class DocumentParserTests extends FlatSpec with Matchers {
       """{
         |  "v1": "test"
         |}""".stripMargin
-    val testParser = ruleDocParser.parse(andDoc)
-    val validResult = ruleDocParser.parse(andDoc)(validDoc)
-    print(ruleDocParser.parse(andDoc)(validDoc)
-      .description)
+    val invalidDoc =
+    """{
+       |  "v3": "test"
+       |}""".stripMargin
+    val rule: TestRule[String, ValidationReport] = ruleDocParser.parse(andDoc)
+    val validReport = rule.validate(validDoc)
+    val invalidReport = rule.validate(invalidDoc)
+    assert(validReport.passed(), "A valid payload should pass " + validReport.description)
+    assert(invalidReport.failed(), "An invalid payload should fail " + invalidReport.description)
   }
 
 
