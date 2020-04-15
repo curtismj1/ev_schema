@@ -22,7 +22,9 @@ object JsonHelpers {
           )
       )
   }
-
+  implicit class RuleConverter[A, B <: ValidationReport](func: A => B) {
+    def toRule: TestRule[A, B] = (a: A) => func(a)
+  }
 }
 
 /**
@@ -33,28 +35,27 @@ object JsonHelpers {
   *   3. What happens if we iterate to the full depth of a document without finding any keywords?
   */
 case class RuleDocumentParser(
-    _keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
+    keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
       RuleDocumentParser.defaultKeywordMap,
-    ruleReducer: TestRuleReducer[String, ValidationReport] =
-      RuleReducers.and[String],
+    ruleReducer: TestRuleReducer[JsValue, ValidationReport] =
+      RuleReducers.and[JsValue],
     currentPathExtractor: JsPath = JsPath
 ) extends Parser[TestRule[String, ValidationReport]] {
 
   def parse(str: String): TestRule[String, ValidationReport] = {
-    val jsVal = Json.parse(str)
-    parseVal(jsVal)
+    import JsonHelpers._
+    val jsVal   = Json.parse(str)
+    val valRule = parseVal(jsVal)
+    inputStr => {
+      val either =
+        for {
+          asVal <- inputStr.toVal
+        } yield valRule.validate(asVal)
+      either.merge
+    }
   }
 
-  def keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
-    _keywordMap.withDefault(
-      str => copy(currentPathExtractor = currentPathExtractor \ str).parseVal _
-    ) ++
-      Map(
-        "AND" -> copy(ruleReducer = RuleReducers.and).parseVal,
-        "OR"  -> copy(ruleReducer = RuleReducers.or).parseVal
-      )
-
-  def parseVal(jsVal: JsValue): TestRule[String, ValidationReport] =
+  def parseVal(jsVal: JsValue): TestRule[JsValue, ValidationReport] =
     jsVal match {
       case jsObj: JsObject => parseObj(jsObj)
       case jsArr: JsArray  => parseArr(jsArr)
@@ -64,16 +65,39 @@ case class RuleDocumentParser(
 
   //Should this iterate through all the key values to extract what is in the map and then recurse down?
   //How should it handle all the paths?
-  def parseObj(jsObj: JsObject): TestRule[String, ValidationReport] = {
-    val rules: collection.Set[TestRule[String, ValidationReport]] =
+  def parseObj(jsObj: JsObject): TestRule[JsValue, ValidationReport] = {
+    //collection.Set[TestRule[JsValue, ValidationReport]]
+    val rules =
       for {
         (key, value) <- jsObj.fieldSet
-        keywordFunc = keywordMap(key)
-      } yield keywordFunc(value)
+        keywordFunc = keywordMap
+          .get(key)
+          .map(_(value))
+          .map(func => {
+            val jsFunc: JsValue => ValidationReport = (jsValue: JsValue) =>
+              jsValue match {
+                case s: JsString => func(s.value)
+                case a =>
+                  ValidationReport.failed(s"Value ${a} is not of type String")
+              }
+            import JsonHelpers.RuleConverter
+            jsFunc.toRule
+          })
+          .orElse( key match {
+            case "AND" => Some(copy(ruleReducer = RuleReducers.and).parseVal(value))
+            case "OR" => Some(copy(ruleReducer = RuleReducers.or).parseVal(value))
+            case _ => None
+          })
+          .getOrElse(
+              if (key.endsWith("?"))
+                JsonPathRule.optional(JsPath \ key.dropRight(1), parseVal(value))
+              else JsonPathRule.required(JsPath \ key, parseVal(value))
+          )
+      } yield keywordFunc
     ruleReducer(rules.toList)
   }
 
-  def parseArr(jsArr: JsArray): TestRule[String, ValidationReport] =
+  def parseArr(jsArr: JsArray): TestRule[JsValue, ValidationReport] =
     ruleReducer(jsArr.value.map(parseVal).toList)
 }
 
@@ -89,7 +113,7 @@ case class RuleDocumentParserBuilder(
 
 object RuleDocumentParser {
 
-  // TODO: Come back to this and think about how to avoid thej casting issues
+  // TODO: Come back to this and think about how to avoid the casting issues
   val defaultKeywordMap
       : Map[String, JsValue => TestRule[String, ValidationReport]] = Map(
     "equals" -> (

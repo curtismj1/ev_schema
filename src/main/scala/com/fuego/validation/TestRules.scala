@@ -9,6 +9,7 @@ import play.api.libs.json.{JsPath, JsValue}
 
 import scala.annotation.varargs
 import scala.jdk.CollectionConverters._
+import scala.reflect.ClassTag
 
 trait Describable {
   def description: String
@@ -59,7 +60,7 @@ object ValidationReport {
 
 }
 
-case class PathReportRule(
+case class JsonPathRule(
     extractionPath: JsPath,
     jsValueFunc: JsValue => ValidationReport,
     emptyFunc: ValidationReport
@@ -69,12 +70,12 @@ case class PathReportRule(
       .fold(emptyFunc)(jsValueFunc)
   }
 }
-object PathReportRule {
+object JsonPathRule {
   def required(
       extractionPath: JsPath,
       jsValueFunc: JsValue => ValidationReport
-  ): PathReportRule = {
-    PathReportRule(
+  ): JsonPathRule = {
+    JsonPathRule(
       extractionPath,
       jsValueFunc,
       ValidationReport.failed(
@@ -85,8 +86,8 @@ object PathReportRule {
   def optional(
       extractionPath: JsPath,
       jsValueFunc: JsValue => ValidationReport
-  ): PathReportRule = {
-    PathReportRule(
+  ): JsonPathRule = {
+    JsonPathRule(
       extractionPath,
       jsValueFunc,
       ValidationReport.passed(
