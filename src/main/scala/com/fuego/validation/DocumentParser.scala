@@ -25,6 +25,7 @@ object JsonHelpers {
   implicit class RuleConverter[A, B <: ValidationReport](func: A => B) {
     def toRule: TestRule[A, B] = (a: A) => func(a)
   }
+
 }
 
 /**
@@ -74,12 +75,11 @@ case class RuleDocumentParser(
           .get(key)
           .map(_(value))
           .map(func => {
-            val jsFunc: JsValue => ValidationReport = (jsValue: JsValue) =>
-              jsValue match {
-                case s: JsString => func(s.value)
-                case a =>
-                  ValidationReport.failed(s"Value ${a} is not of type String")
-              }
+            val jsFunc: JsValue => ValidationReport = {
+              case s: JsString => func(s.value)
+              case a =>
+                ValidationReport.failed(s"Value ${a} is not of type String")
+            }
             import JsonHelpers.RuleConverter
             jsFunc.toRule
           })
@@ -94,7 +94,7 @@ case class RuleDocumentParser(
               else JsonPathRule.required(JsPath \ key, parseVal(value))
           )
       } yield keywordFunc
-    ruleReducer(rules.toList)
+    if (rules.size == 1) rules.head else ruleReducer(rules.toList)
   }
 
   def parseArr(jsArr: JsArray): TestRule[JsValue, ValidationReport] =
@@ -130,10 +130,8 @@ object RuleDocumentParser {
             jsVal
               .asInstanceOf[json.JsArray]
               .value
-              .toArray
+              .toVector
               .map(_.asInstanceOf[JsString].value)
-              .toBuffer
-              .asJava
           )
       ),
     "orContains" -> (
@@ -142,10 +140,8 @@ object RuleDocumentParser {
             jsVal
               .asInstanceOf[json.JsArray]
               .value
-              .toArray
+              .toVector
               .map(_.asInstanceOf[JsString].value)
-              .toBuffer
-              .asJava
           )
       )
   )

@@ -1,12 +1,10 @@
 package com.fuego.validation
 
-import java.util
 import java.util.function.Function
-import java.util.stream.Collectors
-import java.util.{List => JList}
+
 import play.api.libs.json.{JsPath, JsValue}
+
 import scala.annotation.varargs
-import scala.jdk.CollectionConverters._
 
 trait Describable {
   def description: String
@@ -17,12 +15,12 @@ trait ValidationReport extends Describable {
   def failed(): Boolean            = !passed()
   override def description: String = ""
   def and(otherReport: ValidationReport): AndReport = this match {
-    case a: AndReport => a.reports.add(otherReport); a
-    case _            => AndReport(util.Arrays.asList(this, otherReport))
+    case a: AndReport => a.copy(a.reports :+ otherReport)
+    case _            => AndReport(Vector(this, otherReport))
   }
-  def or(otherReport: ValidationReport): OrValidationReport = this match {
-    case a: OrValidationReport => a.reports.add(otherReport); a
-    case _                     => OrValidationReport(util.Arrays.asList(this, otherReport))
+  def or(otherReport: ValidationReport): OrReport = this match {
+    case a: OrReport => a.copy(a.reports :+ otherReport)
+    case _                     => OrReport(Vector(this, otherReport))
   }
 }
 
@@ -41,19 +39,19 @@ object ValidationReport {
   def or(
       report: ValidationReport,
       report2: ValidationReport
-  ): OrValidationReport = report.or(report2)
+  ): OrReport = report.or(report2)
 
   @varargs
   def and[A](
       functions: Function[A, ValidationReport]*
   ): Function[A, AndReport] =
-    a => AndReport(functions.map(func => func(a)).toBuffer.asJava)
+    a => AndReport(functions.map(func => func(a)).toVector)
 
   @varargs
   def or[A](
       functions: Function[A, ValidationReport]*
-  ): Function[A, OrValidationReport] =
-    a => OrValidationReport(functions.map(func => func(a)).toBuffer.asJava)
+  ): Function[A, OrReport] =
+    a => OrReport(functions.map(func => func(a)).toVector)
 
 }
 
@@ -62,10 +60,9 @@ case class JsonPathRule(
     jsValueFunc: JsValue => ValidationReport,
     emptyFunc: ValidationReport
 ) extends TestRule[JsValue, ValidationReport] {
-  override def validate(obj: JsValue): ValidationReport = {
+  override def validate(obj: JsValue): ValidationReport =
     extractionPath(obj).headOption
       .fold(emptyFunc)(jsValueFunc)
-  }
 }
 object JsonPathRule {
   def required(
@@ -135,21 +132,18 @@ object ContextValidationReport {
   }
 }
 
-abstract class ReduceReport(val reports: JList[ValidationReport])
+abstract class ReduceReport(val reports: Vector[ValidationReport])
     extends ValidationReport
 
-case class AndReport(override val reports: JList[ValidationReport])
+case class AndReport(override val reports: Vector[ValidationReport])
     extends ReduceReport(reports = reports) {
-  override def passed(): Boolean = reports.stream().allMatch(_.passed())
-  override def description: String =
-    s"AND (\n\t${reports.stream().map(_.description).collect(Collectors.joining("\n\t"))}\n)"
+  override def passed(): Boolean = reports.forall(_.passed())
+
 }
 
-case class OrValidationReport(override val reports: JList[ValidationReport])
+case class OrReport(override val reports: Vector[ValidationReport])
     extends ReduceReport(reports = reports) {
-  override def passed(): Boolean = reports.stream().anyMatch(_.passed())
-  override def description: String =
-    s"OR (\n\t${reports.stream().map(_.description).collect(Collectors.joining("\n\t"))}\n)"
+  override def passed(): Boolean = reports.exists(_.passed())
 }
 
 case class RegexValidationReportSupplier(regex: String)
@@ -174,18 +168,18 @@ case class StringEqualsTestRule(expected: String)
 case class StringEqualsValidationReport(expected: String, actual: String)
     extends ValidationReport {
   override def description: String =
-    s"String ${actual} expected to match $expected"
+    s"${actual} == ${expected}"
   override def passed(): Boolean = expected.equals(actual)
 }
 
-case class StringContainsTestRule(expected: JList[String])
+case class StringContainsTestRule(expected: Vector[String])
     extends TestRule[String, StringContainsValidationReport] {
   override def validate(actual: String): StringContainsValidationReport =
     StringContainsValidationReport(expected, actual)
 }
 
 case class StringContainsValidationReport(
-    expected: JList[String],
+    expected: Vector[String],
     actual: String
 ) extends ValidationReport {
 
@@ -193,29 +187,24 @@ case class StringContainsValidationReport(
     s"$actual expected to contain all substrings"
   override def passed = missingSubstrings.isEmpty
   lazy val missingSubstrings = expected
-    .stream()
     .filter(substr => !actual.contains(substr))
-    .collect(Collectors.toList())
-
 }
 
-case class StringOrContainsValidationReportSupplier(expected: JList[String])
+case class StringOrContainsValidationReportSupplier(expected: Vector[String])
     extends Function[String, StringOrContainsValidationReport] {
   override def apply(actual: String): StringOrContainsValidationReport =
     StringOrContainsValidationReport(expected, actual)
 }
 
 case class StringOrContainsValidationReport(
-    expected: JList[String],
+    expected: Vector[String],
     actual: String
 ) extends ValidationReport {
   override def description: String =
     s"$actual expected to contain all substrings"
   override def passed = !foundSubstrings.isEmpty
   lazy val foundSubstrings = expected
-    .stream()
     .filter(substr => actual.contains(substr))
-    .collect(Collectors.toList())
 }
 
 trait TestRule[-T, +U <: ValidationReport] extends (T => U) {
@@ -224,35 +213,35 @@ trait TestRule[-T, +U <: ValidationReport] extends (T => U) {
 }
 
 object RuleReducers {
-  def and[T]: TestRuleReducer[T, AndReport] = AndTestRule[T]
-  def or[T]: TestRuleReducer[T, OrValidationReport] =  OrTestRule[T]
+  def and[T]: TestRuleReducer[T, AndReport] = rules => AndTestRule[T](rules.toVector)
+  def or[T]: TestRuleReducer[T, OrReport] =  rules => OrTestRule[T](rules.toVector)
 }
 
-case class AndTestRule[T](rules: List[TestRule[T, ValidationReport]] = List())
+case class AndTestRule[T](rules: Vector[TestRule[T, ValidationReport]] = Vector())
     extends TestRule[T, AndReport] {
   override def validate(t: T): AndReport = {
-    val reports: List[ValidationReport] =
+    val reports: Vector[ValidationReport] =
       rules.map(rule => rule.validate(t))
-    AndReport(reports.asJava)
+    AndReport(reports)
   }
 }
 
-case class OrTestRule[T](rules: List[TestRule[T, ValidationReport]])
-    extends TestRule[T, OrValidationReport] {
-  override def validate(t: T): OrValidationReport = {
-    val reports: List[ValidationReport] =
+case class OrTestRule[T](rules: Vector[TestRule[T, ValidationReport]])
+    extends TestRule[T, OrReport] {
+  override def validate(t: T): OrReport = {
+    val reports: Vector[ValidationReport] =
       rules.map(rule => rule.validate(t))
-    OrValidationReport(reports.asJava)
+    OrReport(reports)
   }
 }
 
 object ValidationReportCombinators {
   @varargs
   def and[T](rules: TestRule[T, ValidationReport]*): AndTestRule[T] =
-    AndTestRule(rules.toList)
+    AndTestRule(rules.toVector)
 
   @varargs
   def or[T](rules: TestRule[T, ValidationReport]*): OrTestRule[T] =
-    OrTestRule(rules.toList)
+    OrTestRule(rules.toVector)
 
 }

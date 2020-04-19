@@ -1,6 +1,6 @@
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.fuego.validation.{AndReport, OrValidationReport, RuleDocumentParser, TestRule, ValidationReport}
+import com.fuego.validation.{AndReport, OrReport, RuleDocumentParser, TestRule, ValidationReport}
 import org.scalatest.{FlatSpec, Matchers}
 import play.api.libs.json.Json
 
@@ -35,6 +35,7 @@ class DocumentParserTests extends FlatSpec with Matchers {
   }
 
   "OR keyword" should "return an com.fuego.validation.OrTestRule" in {
+    import com.fuego.validation.ReportSerde._
     val andDoc =
       """
         |{
@@ -60,7 +61,7 @@ class DocumentParserTests extends FlatSpec with Matchers {
     val rule: TestRule[String, ValidationReport] = ruleDocParser.parse(andDoc)
     val validReport = rule.validate(validDoc)
     val invalidReport = rule.validate(invalidDoc)
-    print(validReport.description)
+    print(Json.prettyPrint(Json.toJson(validReport)))
     print(invalidReport.description)
     val om = new ObjectMapper()
     om.registerModule(DefaultScalaModule)
