@@ -2,7 +2,15 @@ package com.fuego.validation
 
 import java.util.function.Function
 
-import play.api.libs.json.{JsPath, JsValue}
+import play.api.libs.json.{
+  JsArray,
+  JsObject,
+  JsPath,
+  JsValue,
+  Json,
+  OWrites,
+  PathWrites
+}
 
 import scala.annotation.varargs
 
@@ -14,13 +22,18 @@ trait ValidationReport extends Describable {
   def passed(): Boolean
   def failed(): Boolean            = !passed()
   override def description: String = ""
+
   def and(otherReport: ValidationReport): AndReport = this match {
     case a: AndReport => a.copy(a.reports :+ otherReport)
     case _            => AndReport(Vector(this, otherReport))
   }
+
+  def serialize: JsObject =
+    Json.obj("passed" -> passed, "description" -> description)
+
   def or(otherReport: ValidationReport): OrReport = this match {
     case a: OrReport => a.copy(a.reports :+ otherReport)
-    case _                     => OrReport(Vector(this, otherReport))
+    case _           => OrReport(Vector(this, otherReport))
   }
 }
 
@@ -60,9 +73,19 @@ case class JsonPathRule(
     jsValueFunc: JsValue => ValidationReport,
     emptyFunc: ValidationReport
 ) extends TestRule[JsValue, ValidationReport] {
-  override def validate(obj: JsValue): ValidationReport =
-    extractionPath(obj).headOption
-      .fold(emptyFunc)(jsValueFunc)
+  override def validate(obj: JsValue): ValidationReport = {
+    val report =
+      extractionPath(obj).headOption
+        .fold(emptyFunc)(jsValueFunc)
+    new ValidationReport {
+      override def passed(): Boolean = report.passed()
+      override def serialize: JsObject =
+        extractionPath
+          .write[JsValue] //(report.serialize)
+          .writes(report.serialize)
+    }
+  }
+
 }
 object JsonPathRule {
   def required(
@@ -138,12 +161,24 @@ abstract class ReduceReport(val reports: Vector[ValidationReport])
 case class AndReport(override val reports: Vector[ValidationReport])
     extends ReduceReport(reports = reports) {
   override def passed(): Boolean = reports.forall(_.passed())
+  override def serialize: JsObject =
+    reports.map(_.serialize).foldLeft(JsObject.empty) { (partial, next) =>
+      partial ++ next
+    }
 
 }
 
 case class OrReport(override val reports: Vector[ValidationReport])
     extends ReduceReport(reports = reports) {
   override def passed(): Boolean = reports.exists(_.passed())
+  override def serialize: JsObject =
+    Json.obj(
+      "OR" ->
+        reports.map(_.serialize).foldLeft(JsObject.empty) { (partial, next) =>
+          partial ++ next
+        }
+    )
+
 }
 
 case class RegexValidationReportSupplier(regex: String)
@@ -213,17 +248,21 @@ trait TestRule[-T, +U <: ValidationReport] extends (T => U) {
 }
 
 object RuleReducers {
-  def and[T]: TestRuleReducer[T, AndReport] = rules => AndTestRule[T](rules.toVector)
-  def or[T]: TestRuleReducer[T, OrReport] =  rules => OrTestRule[T](rules.toVector)
+  def and[T]: TestRuleReducer[T, AndReport] =
+    rules => AndTestRule[T](rules.toVector)
+  def or[T]: TestRuleReducer[T, OrReport] =
+    rules => OrTestRule[T](rules.toVector)
 }
 
-case class AndTestRule[T](rules: Vector[TestRule[T, ValidationReport]] = Vector())
-    extends TestRule[T, AndReport] {
+case class AndTestRule[T](
+    rules: Vector[TestRule[T, ValidationReport]] = Vector()
+) extends TestRule[T, AndReport] {
   override def validate(t: T): AndReport = {
     val reports: Vector[ValidationReport] =
       rules.map(rule => rule.validate(t))
     AndReport(reports)
   }
+
 }
 
 case class OrTestRule[T](rules: Vector[TestRule[T, ValidationReport]])

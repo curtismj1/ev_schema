@@ -56,6 +56,10 @@ case class RuleDocumentParser(
     }
   }
 
+  def withRule(keyword: String, func: JsValue => TestRule[String, ValidationReport]): RuleDocumentParser = {
+    copy(keywordMap = keywordMap + (keyword -> func))
+  }
+
   def parseVal(jsVal: JsValue): TestRule[JsValue, ValidationReport] =
     jsVal match {
       case jsObj: JsObject => parseObj(jsObj)
@@ -146,51 +150,3 @@ object RuleDocumentParser {
       )
   )
 }
-
-//class DocumentParser {
-//
-//  def traverseVal(
-//      jsVal: JsValue,
-//      currentContext: Set[String],
-//      parseAsRules: Boolean
-//  ): ValidationEngine = {
-//    jsVal match {
-//      case obj: JsObject => traverseObj(obj, currentContext, parseAsRules)
-//      case arr: JsArray  => traverseArr(arr)
-//      case _             => ValidationEngine()
-//    }
-//  }
-//
-//  def parseRules(
-//      jsValue: JsValue,
-//      currentPath: JsPath = JsPath
-//  ): ValidationEngine = {
-//    ValidationEngine()
-//  }
-//
-//  def traverseObj(
-//      obj: JsObject,
-//      currentContext: Set[String] = Set.empty,
-//      parseAsRules: Boolean = false
-//  ): ValidationEngine = {
-//    ValidationEngine()
-//  }
-//
-//  def traverseArr(
-//      arr: JsArray,
-//      currentContext: Set[String] = Set.empty,
-//      parseAsRules: Boolean = false
-//  ): ValidationEngine = {
-//    ValidationEngine()
-//  }
-//
-//  def getRules(jsValue: JsValue, currentPath: JsPath = JsPath) = {
-//    jsValue match {
-//      case obj: JsObject => obj
-//      case arr: JsArray  => arr
-//    }
-//  }
-//
-//  def getRulesArr(jsArr: JsArray, currentPath: JsPath = JsPath) = {}
-//
-//}

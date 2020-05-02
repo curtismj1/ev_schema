@@ -34,9 +34,35 @@ class DocumentParserTests extends FlatSpec with Matchers {
     assert(invalidReport.failed(), "An invalid payload should fail " + invalidReport.description)
   }
 
+  "Nested Doc" should "work" in {
+    val doc =
+      """
+      |{
+      |  "v1": {
+      |     "v2": {
+      |        "equals": "test"
+      |     },
+      |     "v3": {
+      |       "v4": {
+      |         "equals": "test"
+      |       }
+      |     }
+      |  }
+      |}
+      """.stripMargin
+    val validDoc =
+      """{
+        |  "v1": {
+        |      "v2": "test",
+        |      "v3": { "v4": "test" }
+        |   }
+        |}""".stripMargin
+    val report = RuleDocumentParser().parse(doc).validate(validDoc)
+    print(Json.prettyPrint(Json.toJson(report.serialize)))
+  }
+
   "OR keyword" should "return an com.fuego.validation.OrTestRule" in {
-    import com.fuego.validation.ReportSerde._
-    val andDoc =
+    val orDoc =
       """
         |{
         |   "OR": {
@@ -58,14 +84,11 @@ class DocumentParserTests extends FlatSpec with Matchers {
       """{
         |  "v2": "not test"
         |}""".stripMargin
-    val rule: TestRule[String, ValidationReport] = ruleDocParser.parse(andDoc)
+    val rule: TestRule[String, ValidationReport] = ruleDocParser.parse(orDoc)
     val validReport = rule.validate(validDoc)
     val invalidReport = rule.validate(invalidDoc)
-    print(Json.prettyPrint(Json.toJson(validReport)))
-    print(invalidReport.description)
-    val om = new ObjectMapper()
-    om.registerModule(DefaultScalaModule)
-    println(om.writerWithDefaultPrettyPrinter().writeValueAsString(invalidReport))
+    print(Json.prettyPrint(Json.toJson(validReport.serialize)))
+    print(Json.prettyPrint(Json.toJson(invalidReport.serialize)))
     assert(validReport.passed(), "A valid payload should pass " + validReport.description)
     assert(invalidReport.failed(), "An invalid payload should fail " + invalidReport.description)
   }
