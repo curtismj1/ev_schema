@@ -1,4 +1,4 @@
-package com.fuego.validation
+package com.fuego.contextvalidation
 
 import java.util.function.Function
 
@@ -190,7 +190,7 @@ case class RegexValidationReportSupplier(regex: String)
 case class RegexValidationReport(regex: String, str: String)
     extends ValidationReport {
   override def description: String =
-    s"Regex pattern ${regex} expected to match $str"
+    s"Regex pattern '${regex}' expected to match '$str''"
   override def passed(): Boolean = regex.r.findFirstIn(str).isDefined
 }
 
@@ -203,7 +203,7 @@ case class StringEqualsTestRule(expected: String)
 case class StringEqualsValidationReport(expected: String, actual: String)
     extends ValidationReport {
   override def description: String =
-    s"${actual} == ${expected}"
+    s"'${actual}' ${if (passed) "==" else "!="} '${expected}'"
   override def passed(): Boolean = expected.equals(actual)
 }
 
@@ -219,7 +219,7 @@ case class StringContainsValidationReport(
 ) extends ValidationReport {
 
   override def description: String =
-    s"$actual expected to contain all substrings"
+    s"'$actual' expected to contain all substrings"
   override def passed = missingSubstrings.isEmpty
   lazy val missingSubstrings = expected
     .filter(substr => !actual.contains(substr))
@@ -236,7 +236,7 @@ case class StringOrContainsValidationReport(
     actual: String
 ) extends ValidationReport {
   override def description: String =
-    s"$actual expected to contain all substrings"
+    s"'$actual' expected to contain all substrings"
   override def passed = !foundSubstrings.isEmpty
   lazy val foundSubstrings = expected
     .filter(substr => actual.contains(substr))

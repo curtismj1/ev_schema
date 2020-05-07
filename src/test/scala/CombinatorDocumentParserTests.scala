@@ -1,4 +1,4 @@
-import com.fuego.validation.{RuleDocumentParser, ValidationReport}
+import com.fuego.contextvalidation.{RuleDocumentParser, ValidationReport}
 import org.scalatest.{FlatSpec, Matchers}
 
 class CombinatorDocumentParserTests extends FlatSpec with Matchers {

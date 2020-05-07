@@ -1,11 +1,8 @@
-package com.fuego.validation
-
-import java.util
+package com.fuego.contextvalidation
 
 import play.api.libs.json
-import play.api.libs.json.{JsArray, JsObject, JsPath, JsString, JsValue, Json}
+import play.api.libs.json._
 
-import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 trait Parser[T] {
@@ -35,7 +32,7 @@ object JsonHelpers {
   *   2. What functions do those keywords produce?
   *   3. What happens if we iterate to the full depth of a document without finding any keywords?
   */
-case class RuleDocumentParser(
+ case class RuleDocumentParser(
     keywordMap: Map[String, JsValue => TestRule[String, ValidationReport]] =
       RuleDocumentParser.defaultKeywordMap,
     ruleReducer: TestRuleReducer[JsValue, ValidationReport] =
@@ -60,10 +57,31 @@ case class RuleDocumentParser(
     copy(keywordMap = keywordMap + (keyword -> func))
   }
 
+  def parseStr(jsString: JsString): TestRule[JsValue, ValidationReport] = {
+      if (jsString.value.equals("*"))
+        return _ => ValidationReport.passed("Value at path exists")
+      val strRule =
+      jsString.value match {
+        case s if s.startsWith("/")
+          && s.endsWith("/")
+          && s.length > 2 =>
+              RegexValidationReportSupplier(s.substring(1, s.length-1))
+        case s => StringEqualsTestRule(s)
+      }
+    (jsVal) => {
+      jsVal match {
+        case jsString: JsString => strRule(jsString.value)
+        case _ =>
+          ValidationReport.failed(s"Expected value to be string but was ${jsVal.getClass}")
+      }
+    }
+  }
+
   def parseVal(jsVal: JsValue): TestRule[JsValue, ValidationReport] =
     jsVal match {
       case jsObj: JsObject => parseObj(jsObj)
       case jsArr: JsArray  => parseArr(jsArr)
+      case jsString: JsString => parseStr(jsString)
       case _ =>
         _ => ValidationReport.failed("Could not find test rule")
     }
@@ -116,6 +134,8 @@ case class RuleDocumentParserBuilder(
 }
 
 object RuleDocumentParser {
+
+  def getDefault: RuleDocumentParser = RuleDocumentParser()
 
   // TODO: Come back to this and think about how to avoid the casting issues
   val defaultKeywordMap

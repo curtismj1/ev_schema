@@ -1,6 +1,8 @@
-name := "context_validation"
+name := "contextvalidation"
 
-version := "0.1"
+organization := "com.fuego"
+
+version := "0.0.1-SNAPSHOT"
 
 scalaVersion := "2.13.1"
 
@@ -12,4 +14,3 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8" % "test"
 // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
 // https://mvnrepository.com/artifact/com.typesafe.play/play-logback
 libraryDependencies += "com.typesafe.play" %% "play-logback" % "2.7.3"
-libraryDependencies += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.10.3"
